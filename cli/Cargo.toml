@@ -1,0 +1,16 @@
+[package]
+name = "meica"
+description = "Multi-echo ICA denoising: a Rust port of tedana"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "meica"
+path = "src/main.rs"
+
+[dependencies]
+meica-core = { path = "../core" }

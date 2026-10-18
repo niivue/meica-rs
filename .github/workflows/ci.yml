@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+      - run: cargo test --locked --workspace --release
+      - if: runner.os == 'Linux'
+        run: make lint
+
+  # Every output against tedana's on the pinned Hugging Face data, and the WebAssembly builds
+  # against native. f64::mul_add is exactly rounded everywhere, so Linux reproduces the bits.
+  regression:
+    runs-on: ubuntu-latest
+    env:
+      MEICA_HF_DIR: ${{ github.workspace }}/hf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - run: rustup toolchain install nightly-2025-11-15 --component rust-src --target wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install huggingface_hub numpy nibabel
+      - run: cargo install wasm-pack --version 0.13.1 --locked
+      - uses: actions/cache@v4
+        with:
+          path: hf
+          key: hf-${{ hashFiles('Makefile') }}
+      - run: make reference
+      - run: make test-real check-outputs PYTHON=python MEICA_REFERENCE_DIR=$MEICA_HF_DIR/me-ica/motor-3echo
+      - run: make test-real check-outputs check-external wasm-parity PYTHON=python MEICA_REFERENCE_DIR=$MEICA_HF_DIR/me-ica/motor-3echo-moco
+      - run: cd js && npm test

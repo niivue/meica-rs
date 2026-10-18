@@ -1,0 +1,36 @@
+{
+  "name": "@niivue/meica",
+  "version": "0.1.20261018",
+  "description": "Multi-echo ICA denoising (a Rust port of tedana) as WebAssembly",
+  "type": "module",
+  "license": "GPL-2.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/niivue/meica-rs.git",
+    "directory": "js"
+  },
+  "homepage": "https://github.com/niivue/meica-rs#readme",
+  "bugs": {
+    "url": "https://github.com/niivue/meica-rs/issues"
+  },
+  "keywords": ["fmri", "multi-echo", "ica", "tedana", "denoising", "nifti", "webassembly"],
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
+  "files": ["src", "dist/single", "README.md", "LICENSE", "NOTICE"],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/build-wasm.mjs",
+    "prepack": "cp ../LICENSE ../NOTICE .",
+    "test": "node --test test/*.test.js",
+    "pub": "npm run build && npm test && npm publish"
+  }
+}

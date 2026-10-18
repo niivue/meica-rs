@@ -1,0 +1,66 @@
+name: Release
+
+# Push a tag v<version> (the workspace version, e.g. v0.1.20261018) to attach native archives and
+# the npm tarball to its GitHub release. npm publishing stays manual: `cd js && npm run pub`.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, target: aarch64-apple-darwin, platform: macos-arm64 }
+          - { os: macos-latest, target: x86_64-apple-darwin, platform: macos-x64 }
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, platform: linux-x64 }
+          - { os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, platform: linux-arm64 }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, platform: windows-x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build --locked --release -p meica --target ${{ matrix.target }}
+      - name: Archive
+        shell: bash
+        run: |
+          name=meica-${GITHUB_REF_NAME#v}-${{ matrix.platform }}
+          mkdir "$name"
+          cp target/${{ matrix.target }}/release/meica$([ "$RUNNER_OS" = Windows ] && echo .exe) README.md LICENSE NOTICE "$name"/
+          if [ "$RUNNER_OS" = Windows ]; then 7z a "$name.zip" "$name" >/dev/null; f="$name.zip"; else tar czf "$name.tar.gz" "$name"; f="$name.tar.gz"; fi
+          echo "ARCHIVE=$f" >> "$GITHUB_ENV"
+      - name: Upload to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "" || true
+          gh release upload "$GITHUB_REF_NAME" "$ARCHIVE" --clobber
+
+  npm-tarball:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - run: rustup toolchain install nightly-2025-11-15 --component rust-src --target wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo install wasm-pack --version 0.13.1 --locked
+      - run: make wasm && cd js && npm test && npm pack
+      # The threaded build stays unpublished until its Apache-2.0 dependency is resolved (AGENTS.md).
+      # Not grep -q: its early exit can SIGPIPE tar, which under pipefail (shell: bash) ! would pass.
+      - run: "! tar tzf js/niivue-meica-*.tgz | grep dist/threaded"
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "" || true
+          gh release upload "$GITHUB_REF_NAME" js/niivue-meica-*.tgz --clobber

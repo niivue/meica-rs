@@ -1,0 +1,14 @@
+meica is a Rust port of tedana (LGPL-2.1, the tedana developers,
+https://github.com/ME-ICA/tedana) and mapca (GPL-2.0 per its LICENSE file, the ME-ICA developers,
+https://github.com/ME-ICA/mapca; mapca follows GIFT, GPL-2.0, https://github.com/trendscenter/gift).
+The combined work is distributed under GPL-2.0-only; see README.md "License".
+
+core/src/math.rs ports routines from FreeBSD msun, which carry this notice:
+
+  Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+  Developed at SunSoft, a Sun Microsystems, Inc. business.
+  Permission to use, copy, modify, and distribute this software is freely
+  granted, provided that this notice is preserved.
+
+core/trees/*.json: tedana's decision trees (tedana_orig, meica, minimal, demo_external_*), copied
+verbatim, and motion_aroma/motion_f, derived from tedana's demo trees.
