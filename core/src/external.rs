@@ -744,11 +744,8 @@ fn repeat(
     if n < lo {
         return n < hi && m(r, t, i, &mut |j| repeat(r, lo, hi, lazy, t, j, n + 1, k));
     }
-    if lazy {
-        k(i) || more(k)
-    } else {
-        more(k) || k(i)
-    }
+    // Lazy tries the shortest match first, greedy the longest.
+    (lazy && k(i)) || more(k) || (!lazy && k(i))
 }
 
 #[cfg(test)]
