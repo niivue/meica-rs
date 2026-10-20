@@ -42,8 +42,13 @@ pub fn check_te_values(tes: &[f64]) -> Result<Vec<f64>, String> {
     Ok(out)
 }
 
-/// Mask, adaptive mask, log-linear T2*/S0 and optimal combination (TEs in seconds).
-pub fn combine(echoes: &[Nifti], tes: &[f64]) -> Result<Combined, String> {
+/// Mask (`user_mask`, tedana --mask, else nilearn's EPI mask of echo 1), adaptive mask,
+/// log-linear T2*/S0 and optimal combination (TEs in seconds).
+pub fn combine(
+    echoes: &[Nifti],
+    tes: &[f64],
+    user_mask: Option<Vec<bool>>,
+) -> Result<Combined, String> {
     if echoes.len() < 2 || echoes.len() != tes.len() {
         return Err(format!(
             "{} echo files but {} echo times; ME-ICA needs at least 2 echoes",
@@ -60,10 +65,13 @@ pub fn combine(echoes: &[Nifti], tes: &[f64]) -> Result<Combined, String> {
     if nvox < 2 {
         return Err("ME-ICA needs a 3D image of at least 2 voxels".into());
     }
-    let epi_mask = mask::epi_mask(|i| echoes[0].value(i), d, n_vol);
+    if user_mask.as_ref().is_some_and(|m| m.len() != nvox) {
+        return Err("the mask does not match the image grid".into());
+    }
+    let epi_mask = user_mask.unwrap_or_else(|| mask::epi_mask(|i| echoes[0].value(i), d, n_vol));
     let voxels = mask::c_order(d, &epi_mask);
     if voxels.is_empty() {
-        return Err("the EPI brain mask is empty".into());
+        return Err("the brain mask is empty".into());
     }
     let mut data = Vec::with_capacity(voxels.len() * echoes.len() * n_vol);
     for &i in &voxels {

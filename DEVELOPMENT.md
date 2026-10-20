@@ -12,12 +12,15 @@ make check-outputs PYTHON=python   # CLI on the example, every file against teda
 make check-external PYTHON=python  # the five regressor trees against tedana's (motor-3echo-moco)
 make wasm        # js/dist/threaded (nightly-2025-11-15 build-std; not published) and js/dist/single (stable)
 make wasm-parity # single-threaded WebAssembly in Node: every output byte-identical to native
+make check-mask PYTHON=python  # --mask / --dummy-scans against tedana's runs in mask/ (+ wasm)
 make lint        # clippy -D warnings (native and wasm32), fmt --check
 make fixtures PYTHON=python   # regenerate core/tests/fixtures (needs numpy, scipy, mpmath)
 ```
 
-Options that select unported tedana code (curvefit, robustica, masks, tedort, gscontrol, dummy
-scans, verbose outputs) are errors. Outputs are tedana's BIDS files except the HTML report,
+Options that select unported tedana code (curvefit, robustica, other masktypes, tedort,
+gscontrol, verbose outputs) are errors. `--mask` and `--dummy-scans` are ported: tedana checks
+only the mask's shape (its affine check is a TODO), and drops dummy regressor rows after the NaN
+fill, so unusable-column checks see the trimmed columns. Outputs are tedana's BIDS files except the HTML report,
 figures, `report.txt` and `references.bib`. The core depends on `flate2` (gzip) and, behind the
 default `parallel` feature, `rayon`; `core/src/nifti.rs` is its own NIfTI-1 header reader.
 Outputs carry nibabel's `get_best_affine` (`Header::affine`: sform, else qform, else a centred
@@ -95,7 +98,7 @@ too, as was the 150-volume scan in Node (19 s, 9 accepted / 6 rejected). Absent 
 take `Options::default`; present ones of the wrong type or range are errors. `loadMeica` caches
 one promise per build URL, so the thread pool starts once, and falls back to `single/` when
 `threaded/` is not served or fails to start. npm ships `dist/single` only (release.yml fails on
-`dist/threaded`) until the licence is resolved (AGENTS.md). `build-wasm.mjs` remaps `$HOME` out
+`dist/threaded`) pending a legal determination (AGENTS.md). `build-wasm.mjs` remaps `$HOME` out
 of panic paths.
 
 ## Numerics
@@ -162,17 +165,43 @@ of panic paths.
   files.
 - `--tree NAME`: a bundled tree wins over a same-named file, as in tedana.
 
+## Release
+
+`cd js && npm run pub` publishes `@niivue/meica` (needs `npm login`). Then, in the Neurodesk
+webapps checkout, bump `apps/me-ica/package.json` and run `pnpm install` to update
+`pnpm-lock.yaml`; a change to outputs also needs `e2e/expected.json` re-recorded (AGENTS.md).
+
+## `--moco`
+
+`core/src/moco.rs` holds the niimath and brainchop-mindgrab command lines (pinned by a unit test);
+the CLI runs them as processes (stdout `-` returns each corrected echo uncompressed), js
+`prepareMoco` through fastprep-style drivers (WASM exports `moco_*`, `nifti_tr`,
+`tree_takes_regressors`). niimath names images by
+`FSLOUTPUTTYPE`, not by the requested extension, and the browser driver forces NIFTI_GZ, so both
+sides use NIFTI_GZ and `.nii.gz` names. `--moco` results are tolerance-only (niimath and mindgrab
+builds round differently); the byte-exact gates and the webapp e2e run without it.
+
 ## Open items
 
+- npm publish of 0.1.20261018 (`--mask`, `dummy_scans`, `prepareMoco`, LGPL-2.1) is pending;
+  then bump the webapp (Release).
 - `validation/wasm_parity.mjs` duplicates the js loader; it could call `loadMeica`/`runMeica`.
 - The nightly toolchain is pinned in three places: `ci.yml`, `release.yml`, `js/scripts/build-wasm.mjs`.
 - WebAssembly ignores `no_reports` (always adds the report columns).
 - `rng` `choice` with n > 10000 is not fixture-verified.
+- `check-mask` references are local until uploaded to HF (`motor-3echo-moco/mask/`); then re-pin
+  and add it to ci.yml and the AGENTS.md gate line.
+- `--moco`: release archives and Neurodesk do not yet ship niimath and brainchop-mindgrab next to
+  meica; the me-ica webapp needs fastprep's drivers (branch `fastprep-rs`) to call `prepareMoco`.
+- `moco::mask` should pass mindgrab `--border 2` (decided, not done; update the pinned test). The
+  `fastprep-rs` mindgrab driver accepts only `-o`, `--mask`, `-backend`, `--pve`, so it needs
+  `--border` first.
+- `--moco` on Windows is untested: `moco::path` joins with `/` under a `\` temp dir.
+- `prepareMoco` stores a caller's mask as `mask.nii.gz` even when it is plain NIfTI; native
+  niimath reads it by content, the browser driver is unchecked.
+- Task-correlated motion: on the motor run (task r≈0.48 with `trans_x`) `tedana_orig` rejects the
+  motor component. A possible rescue is a task model via tedana's `signal_*` external regressors.
+  The `motion_*` trees over-reject in evaluation, so they must not become the default.
 - `selection.rs`: four `comps.is_empty()` blocks repeat `set_cross` + push; `publish` covers them
   (re-run `check-outputs check-external` after).
 - The threaded loader cache is untested in a browser.
-- Neurodesk webapp: `copy-runtime.mjs` deploys the threaded build (AGENTS.md); `src/worker.js`
-  reports "Starting N CPU workers" even after falling back to single; the e2e spec header says it
-  tests the threaded worker.
-- Neurodesk `expected.json` hashes not re-checked after the audit (default outputs are
-  byte-identical, so they should hold).

@@ -1,7 +1,10 @@
-meica is a Rust port of tedana (LGPL-2.1, the tedana developers,
-https://github.com/ME-ICA/tedana) and mapca (GPL-2.0 per its LICENSE file, the ME-ICA developers,
-https://github.com/ME-ICA/mapca; mapca follows GIFT, GPL-2.0, https://github.com/trendscenter/gift).
-The combined work is distributed under GPL-2.0-only; see README.md "License".
+meica is licensed under the GNU Lesser General Public License v2.1 only (LGPL-2.1-only;
+see LICENSE).
+
+meica is a Rust port of tedana (LGPL-2.1, the tedana developers, https://github.com/ME-ICA/tedana)
+and mapca (GPL-2.0 per its LICENSE file, the ME-ICA developers, https://github.com/ME-ICA/mapca;
+mapca follows GIFT, GPL-2.0, https://github.com/trendscenter/gift). On October 18, 2026 the
+developers of those works granted permission to share this Rust port under the LGPL-2.1.
 
 core/src/math.rs ports routines from FreeBSD msun, which carry this notice:
 

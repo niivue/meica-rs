@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-license = "GPL-2.0-only"
+license = "LGPL-2.1-only"
 version = "0.1.20261018"
 repository = "https://github.com/niivue/meica-rs"
 publish = false

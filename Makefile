@@ -1,7 +1,7 @@
 TMPDIR ?= /tmp
 PYTHON ?= python3
 
-.PHONY: reference build test test-real check-outputs check-external wasm wasm-parity lint fixtures
+.PHONY: reference build test test-real check-outputs check-external check-mask wasm wasm-parity lint fixtures
 
 # Example, tedana references and stage files for both examples from Hugging Face, pinned. Then use
 # MEICA_REFERENCE_DIR=$(MEICA_HF_DIR)/me-ica/motor-3echo (or motor-3echo-moco, which adds the
@@ -60,6 +60,20 @@ wasm-parity: build wasm
 		$(call run_example,$(TMPDIR)/meica-native) $(call external_args,$(t)); \
 		node validation/wasm_parity.mjs js/dist/single $(MEICA_REFERENCE_DIR)/example $(TMPDIR)/meica-native $(t) \
 			$(if $(filter $(t),$(DEMO_TREES)),$(MEICA_REFERENCE_DIR)/external/regressors.tsv,$(CONFOUNDS));)
+
+# --mask and --dummy-scans against tedana's runs in mask/ (moco data; a brainchop-mindgrab mask of
+# echo 1's mean with a 4 mm border, so masked voxels without good echoes occur): reference/ (default
+# tree) and dummy/ (--dummy-scans 3, motion_f, the 100-row confounds), plus WebAssembly parity.
+MASK_DIR = $(MEICA_REFERENCE_DIR)/mask
+check-mask: build wasm
+	rm -rf $(TMPDIR)/meica-mask $(TMPDIR)/meica-dummy
+	$(call run_example,$(TMPDIR)/meica-mask) --mask $(MASK_DIR)/mask.nii.gz
+	$(PYTHON) validation/compare_outputs.py $(MASK_DIR)/reference $(TMPDIR)/meica-mask
+	$(call run_example,$(TMPDIR)/meica-dummy) --mask $(MASK_DIR)/mask.nii.gz --dummy-scans 3 \
+		$(call external_args,motion_f)
+	$(PYTHON) validation/compare_outputs.py $(MASK_DIR)/dummy $(TMPDIR)/meica-dummy
+	MEICA_MASK=$(MASK_DIR)/mask.nii.gz MEICA_DUMMY_SCANS=3 node validation/wasm_parity.mjs js/dist/single \
+		$(MEICA_REFERENCE_DIR)/example $(TMPDIR)/meica-dummy motion_f $(CONFOUNDS)
 
 lint:
 	cargo clippy --workspace --all-targets -- -D warnings

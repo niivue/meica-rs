@@ -3,7 +3,7 @@
   "version": "0.1.20261018",
   "description": "Multi-echo ICA denoising (a Rust port of tedana) as WebAssembly",
   "type": "module",
-  "license": "GPL-2.0-only",
+  "license": "LGPL-2.1-only",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/niivue/meica-rs.git",

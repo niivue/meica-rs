@@ -63,10 +63,15 @@ impl Regressors {
     }
 }
 
-/// `validate_extern_regress` on the tree's `external_regressor_config` (no dummy scans): regex
-/// names expanded to the sorted matching columns, partial models checked against their full
-/// model, NaNs back- then forward-filled, and the row count matched to the volumes.
-pub fn validate(reg: &mut Regressors, config: &mut Json, n_vol: usize) -> Result<(), String> {
+/// `validate_extern_regress` on the tree's `external_regressor_config`: regex names expanded to
+/// the sorted matching columns, partial models checked against their full model, NaNs back- then
+/// forward-filled, and the row count matched to the volumes left after `dummy_scans`.
+pub fn validate(
+    reg: &mut Regressors,
+    config: &mut Json,
+    n_vol: usize,
+    dummy_scans: usize,
+) -> Result<(), String> {
     let Json::Arr(models) = config else {
         return Err("external_regressor_config must be a list".into());
     };
@@ -179,8 +184,20 @@ pub fn validate(reg: &mut Regressors, config: &mut Json, n_vol: usize) -> Result
             }
         }
     }
+    // tedana drops the dummy rows after the fill, so a regressor file may cover either length.
+    let rows = reg.cols.first().map_or(0, Vec::len);
+    if rows == n_vol + dummy_scans {
+        for c in &mut reg.cols {
+            c.drain(..dummy_scans);
+        }
+    } else if rows != n_vol {
+        err.push_str(&format!(
+            "External regressors have {rows} timepoints while fMRI data have {n_vol} timepoints.\n"
+        ));
+    }
     // F models z-score their columns: a constant or non-finite one makes every statistic NaN
     // (tedana's scipy lstsq usually raises on it; float rounding can let a constant through).
+    // Checked after the trim: fMRIPrep's non_steady_state_outlier columns are then all zero.
     for n in &f_cols {
         let c = reg.col(n);
         if c.iter().any(|v| !v.is_finite()) || c.iter().all(|&v| v == c[0]) {
@@ -188,12 +205,6 @@ pub fn validate(reg: &mut Regressors, config: &mut Json, n_vol: usize) -> Result
                 "External regressor '{n}' is constant or not finite; an F model cannot use it.\n"
             ));
         }
-    }
-    let rows = reg.cols.first().map_or(0, Vec::len);
-    if rows != n_vol {
-        err.push_str(&format!(
-            "External regressors have {rows} timepoints while fMRI data have {n_vol} timepoints.\n"
-        ));
     }
     if err.is_empty() { Ok(()) } else { Err(err) }
 }
@@ -805,7 +816,7 @@ mod tests {
             "statistic": "F", "regressors": ["x"]}]"#;
         let check = |col: &str| {
             let mut reg = Regressors::parse(&format!("x\tok\n{col}")).unwrap();
-            validate(&mut reg, &mut Json::parse(config).unwrap(), 4)
+            validate(&mut reg, &mut Json::parse(config).unwrap(), 4, 0)
         };
         for bad in [
             "1\t1\n1\t2\n1\t3\n1\t4",
@@ -815,5 +826,34 @@ mod tests {
             assert!(check(bad).unwrap_err().contains("'x'"), "{bad}");
         }
         assert!(check("1\t1\nn/a\t2\n3\t3\n4\t4").is_ok());
+    }
+
+    #[test]
+    fn dummy_rows_are_dropped_after_the_fill() {
+        // tedana keeps regressors that still hold the dummy rows and drops them; fMRIPrep's
+        // outlier column for a dummy volume is then all zero and unusable in an F model.
+        let config = |r: &str| {
+            Json::parse(&format!(
+                r#"[{{"regress_ID": "m", "info": "", "report": "", "detrend": false,
+                "statistic": "F", "regressors": ["{r}"]}}]"#
+            ))
+            .unwrap()
+        };
+        let tsv = "x\tnss\nn/a\t1\n2\t0\n1\t0\n4\t0\n3\t0";
+        let mut reg = Regressors::parse(tsv).unwrap();
+        validate(&mut reg, &mut config("x"), 4, 1).unwrap();
+        assert_eq!(reg.col("x"), &[2.0, 1.0, 4.0, 3.0]);
+        let mut reg = Regressors::parse(tsv).unwrap();
+        assert!(
+            validate(&mut reg, &mut config("nss"), 4, 1)
+                .unwrap_err()
+                .contains("'nss'")
+        );
+        let mut reg = Regressors::parse(tsv).unwrap();
+        assert!(
+            validate(&mut reg, &mut config("x"), 3, 1)
+                .unwrap_err()
+                .contains("timepoints")
+        );
     }
 }

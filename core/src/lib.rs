@@ -12,6 +12,7 @@ pub mod mapca;
 pub mod mask;
 pub mod math;
 pub mod metrics;
+pub mod moco;
 pub mod nifti;
 pub mod output;
 pub mod pipeline;

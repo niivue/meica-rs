@@ -32,6 +32,19 @@ impl Nifti {
         }
         v
     }
+
+    /// tedana --dummy-scans: drop the first `n` volumes.
+    pub fn drop_volumes(&mut self, n: usize) -> Result<(), String> {
+        if n >= self.dims[3] {
+            return Err(format!(
+                "--dummy-scans {n} leaves no volumes of {}",
+                self.dims[3]
+            ));
+        }
+        self.offset += n * self.dims[..3].iter().product::<usize>() * self.width;
+        self.dims[3] -= n;
+        Ok(())
+    }
 }
 
 /// A NIfTI-1 image from file bytes (gzip or plain).
@@ -108,6 +121,20 @@ pub fn parse_nifti(bytes: Vec<u8>) -> Result<Nifti, String> {
         slope,
         inter,
     })
+}
+
+/// The header at the start of a NIfTI stream (plain or gzip), without reading the voxels.
+pub fn header_of(mut r: impl Read) -> Result<Header, String> {
+    let mut h = [0u8; 348];
+    r.read_exact(&mut h[..2]).map_err(|e| e.to_string())?;
+    if h[..2] == [0x1f, 0x8b] {
+        let magic = [0x1f, 0x8b];
+        MultiGzDecoder::new(magic.as_slice().chain(r)).read_exact(&mut h)
+    } else {
+        r.read_exact(&mut h[2..])
+    }
+    .map_err(|e| e.to_string())?;
+    Header::parse(&h)
 }
 
 pub fn read_nifti(path: &Path) -> Result<Nifti, String> {

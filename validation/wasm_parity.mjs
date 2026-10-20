@@ -3,7 +3,8 @@
 // be byte-identical to the native CLI's.
 //
 // Usage: node validation/wasm_parity.mjs WASM_PKG_DIR EXAMPLE_DIR NATIVE_OUT_DIR [TREE REGRESSORS_TSV]
-// (WASM_PKG_DIR is js/dist/single from `make wasm`; see Makefile).
+// (WASM_PKG_DIR is js/dist/single from `make wasm`; see Makefile). MEICA_MASK and
+// MEICA_DUMMY_SCANS add --mask and --dummy-scans, as given to the native run.
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -13,6 +14,7 @@ import { pathToFileURL } from "node:url";
 const [pkg, example, native] = process.argv.slice(2, 5).map((p) => realpathSync(p));
 const [tree, regressors] = process.argv.slice(5);
 const extra = tree ? { tree, external: readFileSync(regressors, "utf8") } : {};
+if (process.env.MEICA_DUMMY_SCANS) extra.dummy_scans = Number(process.env.MEICA_DUMMY_SCANS);
 const api = await import(pathToFileURL(join(pkg, "meica_wasm.js")).href);
 await api.default({ module_or_path: readFileSync(join(pkg, "meica_wasm_bg.wasm")) });
 globalThis.meicaProgress = () => {};
@@ -24,6 +26,7 @@ for (const e of [1, 2, 3]) {
   const file = join(example, `sub-01_task-motor_echo-${e}_bold.nii.gz`);
   session.add_echo(relative(native, file), readFileSync(file));
 }
+if (process.env.MEICA_MASK) session.set_mask(readFileSync(process.env.MEICA_MASK));
 const started = performance.now();
 const summary = JSON.parse(session.run(JSON.stringify({ tes: [15.2, 35.32, 55.42], command: nativeCommand, ...extra })));
 const seconds = ((performance.now() - started) / 1000).toFixed(1);

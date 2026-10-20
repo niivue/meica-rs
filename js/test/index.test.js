@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { loadMeica, runMeica } from "../src/index.js";
+import { loadMeica, prepareMoco, runMeica } from "../src/index.js";
 
 /** A stand-in for the WebAssembly Session that records what the wrapper passes. */
 function fakeApi(log) {
@@ -69,4 +69,48 @@ test("loadMeica falls back to single when no threaded build is served", { skip: 
     delete globalThis.crossOriginIsolated;
     rmSync(dir, { recursive: true });
   }
+});
+
+test("prepareMoco runs niimath and mindgrab through the caller's driver and feeds runMeica", { skip: !existsSync(new URL("../dist/single/meica_wasm.js", import.meta.url)) && "run npm run build first" }, async () => {
+  const api = await loadMeica({ threads: 1 });
+  const lines = [];
+  // A fake driver: records each command line and writes the files the real tools would.
+  const run = async (argv, { files }) => {
+    lines.push(argv);
+    const out = (flag) => argv[argv.indexOf(flag) + 1];
+    if (argv.includes("-boldref")) files.put(argv[argv.indexOf("-boldref") + 2], new TextEncoder().encode('{"dummy_scans": 2}'));
+    if (argv[0] === "brainchop-mindgrab") files.put(out("--mask"), Uint8Array.of(9));
+    if (argv.includes("-confounds")) files.put(out("-confounds"), new TextEncoder().encode("trans_x\n0\n"));
+    if (argv.includes("-resample")) files.put(argv.at(-1), Uint8Array.of(argv.length));
+    return { code: 0, stdout: "", stderr: "" };
+  };
+  // Header-only NIfTI-1 echoes: prepareMoco reads TR (pixdim[4]) from echo 1.
+  const header = () => {
+    const v = new DataView(new ArrayBuffer(352));
+    v.setInt32(0, 348, true);
+    [4, 2, 2, 2, 3].forEach((d, i) => v.setInt16(40 + 2 * i, d, true));
+    v.setInt16(70, 16, true);
+    v.setInt16(72, 32, true);
+    [1, 1, 1, 1, 2.5].forEach((p, i) => v.setFloat32(76 + 4 * i, p, true));
+    v.setFloat32(108, 352, true);
+    new Uint8Array(v.buffer).set([0x6e, 0x2b, 0x31], 344);
+    return new Uint8Array(v.buffer);
+  };
+  const echoes = [1, 2, 3].map((e) => ({ name: `e${e}.nii.gz`, bytes: header() }));
+  const r = await prepareMoco({ api, echoes, run, options: { tree: "motion_f" } });
+  assert.deepEqual(lines.map((a) => a[0]), ["niimath", "brainchop-mindgrab", "niimath", "niimath", "niimath"]);
+  assert.equal(lines[0][1], "/moco/echo-1.nii");
+  assert.equal(lines[2][lines[2].indexOf("-tr") + 1], "2.5");
+  assert.equal(lines[2][lines[2].indexOf("-dummy") + 1], "2");
+  assert.ok(lines.every((a) => !a.includes("-")), "no stdout output in the browser");
+  assert.deepEqual(r.echoes.map((e) => e.name), ["e1.nii.gz", "e2.nii.gz", "e3.nii.gz"]);
+  assert.deepEqual(r.mask, Uint8Array.of(9));
+  assert.equal(r.options.dummy_scans, 2);
+  assert.equal(r.options.external, "trans_x\n0\n");
+  // A given mask skips mindgrab; the default tree takes no regressors.
+  lines.length = 0;
+  const own = await prepareMoco({ api, echoes, run, mask: Uint8Array.of(7), options: { dummy_scans: 4 } });
+  assert.ok(!lines.some((a) => a[0] === "brainchop-mindgrab"));
+  assert.equal(lines[1][lines[1].indexOf("-dummy") + 1], "4");
+  assert.equal(own.options.external, undefined);
 });

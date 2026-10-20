@@ -13,13 +13,14 @@ Rust port of tedana's ME-ICA (core, cli `meica`, wasm) plus the npm package `@ni
   together with their tedana references. Other trees are tedana's, verbatim.
 - Output bytes are pinned downstream (Neurodesk webapps `apps/me-ica/e2e/expected.json`); a change
   to any output needs those hashes re-recorded.
-- License is GPL-2.0-only pending LGPL confirmation (README "License"); keep `Cargo.toml`,
-  `js/package.json` and `LICENSE` in step when it changes (npm's prepack copies `LICENSE` and
-  `NOTICE` into js/). No Apache-2.0 code: it cannot join a GPL-2.0-only work.
-- Open: wasm-bindgen-rayon (threaded build, `threads` feature) is Apache-2.0 only, the one such
-  crate. Fix by relicensing to (L)GPL-3, shipping single-threaded only, or a clean-room worker
-  pool. Undecided: npm ships `dist/single` only until resolved. The Neurodesk webapp
-  (`webapps/apps/me-ica`, links `meica-rs/js`) still deploys the threaded build
-  (`scripts/copy-runtime.mjs` copies all of `dist/`): copy `dist/single` only, or resolve the
-  licence, before deploying.
+- License is LGPL-2.1-only, as tedana (`LICENSE` is tedana's file byte for byte; the tedana,
+  mapca and GIFT developers permitted it on 2026-10-18, see `NOTICE`). Keep `Cargo.toml`,
+  `js/package.json`, `LICENSE` and `NOTICE` in step (npm's prepack copies `LICENSE` and `NOTICE`
+  into js/; release archives include both).
+- Open: the threaded build links wasm-bindgen-rayon (Apache-2.0 only, the one such crate). GNU
+  counts Apache-2.0 compatible only with version-3 licences; whether LGPL-2.1 section 6 covers
+  the combined wasm needs a legal determination. Until then do not distribute `dist/threaded`
+  anywhere: npm ships `dist/single` only (release.yml enforces it), and the Neurodesk webapp
+  (`webapps/apps/me-ica`) installs `@niivue/meica` from npm and stages only `dist/single`
+  (`scripts/copy-runtime.mjs`).
 - Open items are listed at the end of `DEVELOPMENT.md`.

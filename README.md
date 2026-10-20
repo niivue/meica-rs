@@ -67,9 +67,20 @@ tedana -d $E -e 15.2 35.32 55.42 --tree trees/motion_aroma.json \
 Decision trees: tedana's `tedana_orig` (default), `meica`, `minimal` and its three
 `demo_external_*` trees, plus `motion_aroma` and `motion_f`, which apply tedana's demo AROMA and
 F-test trees to fMRIPrep's `trans_*`/`rot_*` confound columns. `--tree` also takes a JSON file; a
-bundled name wins over a same-named file, as in tedana. Options that select tedana code not
-ported here (for example `--fittype curvefit`, `--ica-method robustica`, `--mask`) stop with an
-error rather than being ignored.
+bundled name wins over a same-named file, as in tedana. `--mask FILE` (voxels > 0 on the echoes'
+grid replace the EPI mask; tedana recommends an external mask) and `--dummy-scans N` (drops the
+first N volumes, and the first N regressor rows when the file still has them) work as in tedana.
+Options that select tedana code not ported here (for example `--fittype curvefit`,
+`--ica-method robustica`) stop with an error rather than being ignored.
+
+`--moco` (not a tedana flag) prepares raw echoes first. [niimath](https://github.com/rordenlab/niimath)
+builds echo 1's BOLD reference, detects dummy volumes and estimates head motion, then resamples
+every echo once through the same motion; [brainchop-mindgrab](https://github.com/neuroneural/brainchop)
+masks the reference (unless `--mask` is given), and niimath writes fMRIPrep-named confounds
+(`desc-mocoConfounds_timeseries.tsv`), which trees that take regressors use as `--external`. A
+non-zero `--dummy-scans` overrides niimath's dummy count. Both
+tools are separate programs, found next to `meica` first, then on PATH. Results with `--moco`
+depend on those tools' builds, so they are not byte-identical across platforms.
 
 In JavaScript (browser or Node 22+):
 
@@ -115,14 +126,12 @@ published:
 
 ## License
 
-meica is currently GPL-2.0-only. It ports tedana (LGPL-2.1) and mapca, whose
-[LICENSE](https://github.com/ME-ICA/mapca/blob/main/LICENSE) is GPL-2.0 (its package metadata says
-LGPL) and which follows [GIFT](https://github.com/trendscenter/gift/blob/df369a2f73aab06c4fe97a10ffab841320722281/GroupICAT/icatb/toolbox/icasso122/README_license.txt#L175)
-(GPL-2.0). The mapca and GIFT developers have indicated that a
-[lesser GPL](https://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License) release is
-acceptable once they have reviewed this code; meica will then be relicensed to LGPL-2.1. Until
-then, software that bundles meica, including its WebAssembly, is subject to GPL-2.0. `NOTICE`
-lists other attributions.
+meica is licensed under the GNU Lesser General Public License v2.1 only ([LICENSE](LICENSE)), as is
+tedana. It is a Rust port of tedana ([LGPL-2.1](https://github.com/ME-ICA/tedana)) and mapca
+([GPL-2.0](https://github.com/ME-ICA/mapca)), which follows GIFT
+([GPL-2.0](https://github.com/trendscenter/gift)). On October 18, 2026 the developers of those
+works granted permission to share this Rust port under the LGPL-2.1. [NOTICE](NOTICE) lists the
+attributions, including the FreeBSD msun notice for `core/src/math.rs`.
 
 ## Citations
 

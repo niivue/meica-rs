@@ -4,7 +4,7 @@
 use crate::decay::fit_echoes;
 use crate::external;
 use crate::fastica::f_ica;
-use crate::io::Nifti;
+use crate::io::{Nifti, parse_nifti};
 use crate::json::Json;
 use crate::linalg::{Mat, residual};
 use crate::mapca::{Criterion, MaPca};
@@ -36,6 +36,11 @@ pub struct Options {
     pub external: Option<String>,
     /// tedana --no-reports, which also drops the metrics' "external regressor correlation" columns.
     pub no_reports: bool,
+    /// tedana --mask: a NIfTI file's bytes on the echoes' grid; voxels > 0 replace the EPI mask.
+    pub mask: Option<Vec<u8>>,
+    /// tedana --dummy-scans: volumes dropped from the start of every echo (and of the regressors
+    /// when they still include them).
+    pub dummy_scans: usize,
 }
 
 impl Default for Options {
@@ -52,6 +57,8 @@ impl Default for Options {
             command: String::new(),
             external: None,
             no_reports: false,
+            mask: None,
+            dummy_scans: 0,
         }
     }
 }
@@ -70,6 +77,15 @@ fn obj(kv: Vec<(&str, Json)>) -> Json {
 
 fn floats(v: &[f64]) -> Json {
     Json::Arr(v.iter().map(|&x| Json::Num(x)).collect())
+}
+
+/// tedana's output file name for `base` under `--prefix`.
+pub fn output_name(prefix: &str, base: &str) -> String {
+    if prefix.is_empty() {
+        base.to_string()
+    } else {
+        format!("{}_{base}", prefix.trim_end_matches('_'))
+    }
 }
 
 /// The leading "Component" column of a component table.
@@ -329,6 +345,7 @@ fn external_regressors(
     tree: &mut Json,
     tsv: Option<&str>,
     n_vol: usize,
+    dummy_scans: usize,
 ) -> Result<Option<external::Regressors>, String> {
     let config = tree
         .get_mut("external_regressor_config")
@@ -341,10 +358,26 @@ fn external_regressors(
         (Some(_), None) => Err("this decision tree needs --external regressors".into()),
         (Some(config), Some(tsv)) => {
             let mut reg = external::Regressors::parse(tsv)?;
-            external::validate(&mut reg, config, n_vol)?;
+            external::validate(&mut reg, config, n_vol, dummy_scans)?;
             Ok(Some(reg))
         }
     }
+}
+
+/// tedana `load_mask`: voxels > 0 of a 3D mask (or 4D with one volume) on the echoes' grid. Like
+/// tedana, only the shape is checked, not the affine.
+fn brain_mask(bytes: &[u8], dims: [usize; 4]) -> Result<Vec<bool>, String> {
+    let m = parse_nifti(bytes.to_vec()).map_err(|e| format!("mask: {e}"))?;
+    if m.dims[..3] != dims[..3] || m.dims[3] != 1 {
+        return Err(format!(
+            "mask is {:?}; the echoes' grid is {:?}",
+            m.dims,
+            &dims[..3]
+        ));
+    }
+    Ok((0..dims[..3].iter().product())
+        .map(|i| m.value(i) > 0.0)
+        .collect())
 }
 
 fn tree_needs(tree: &Json, metric: &str) -> bool {
@@ -356,7 +389,7 @@ fn tree_needs(tree: &Json, metric: &str) -> bool {
 /// Run tedana's default workflow on the echoes. `input_names` are what the registry lists for
 /// them; files go to `w` (a directory, or memory in the browser) and are returned when kept.
 pub fn run(
-    echoes: Vec<Nifti>,
+    mut echoes: Vec<Nifti>,
     input_names: &[String],
     mut w: Writer,
     opts: &Options,
@@ -364,8 +397,16 @@ pub fn run(
 ) -> Result<(Summary, Files), String> {
     let tes = check_te_values(&opts.tes)?;
     let mut tree = load_tree(&opts.tree)?;
+    for e in &mut echoes {
+        e.drop_volumes(opts.dummy_scans)?;
+    }
     let n_vol = echoes.first().map_or(0, |e| e.dims[3]);
-    let external = external_regressors(&mut tree, opts.external.as_deref(), n_vol)?;
+    let external =
+        external_regressors(&mut tree, opts.external.as_deref(), n_vol, opts.dummy_scans)?;
+    let user_mask = match (&opts.mask, echoes.first()) {
+        (Some(bytes), Some(e)) => Some(brain_mask(bytes, e.dims)?),
+        _ => None,
+    };
     let tr = echoes.first().map_or(0.0, |e| e.header.pixdim[4]);
     if tree_needs(&tree, "HFC") && external::hfc_bins(n_vol, tr).1.is_empty() {
         return Err(format!(
@@ -377,20 +418,14 @@ pub fn run(
         return Err(format!("prefix '{}' must not contain a path", opts.prefix));
     }
     log("Computing EPI mask, adaptive mask, T2*/S0 maps and optimal combination");
-    let mut c = combine(&echoes, &tes)?;
+    let mut c = combine(&echoes, &tes, user_mask)?;
     let (dims, n_vol) = (
         [echoes[0].dims[0], echoes[0].dims[1], echoes[0].dims[2]],
         echoes[0].dims[3],
     );
     let n_grid = dims.iter().product();
     let n_echo = tes.len();
-    let name = |base: &str| {
-        if opts.prefix.is_empty() {
-            base.to_string()
-        } else {
-            format!("{}_{base}", opts.prefix.trim_end_matches('_'))
-        }
-    };
+    let name = |base: &str| output_name(&opts.prefix, base);
 
     w.set_template(echoes.into_iter().next().unwrap().header);
     let epi = &c.voxels;

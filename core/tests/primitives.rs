@@ -432,10 +432,57 @@ fn bad_inputs_are_errors_not_panics() {
     five[40..42].copy_from_slice(&5i16.to_le_bytes());
     five[50..52].copy_from_slice(&2i16.to_le_bytes());
     assert!(parse_nifti(five).is_err());
+    // --dummy-scans leaving no volume; --mask off the grid or 4D.
+    let with = |dummy_scans, mask: Option<Vec<u8>>| {
+        let opts = Options {
+            tes: vec![15.0, 30.0],
+            dummy_scans,
+            mask,
+            ..Options::default()
+        };
+        run(
+            vec![echo(), echo()],
+            &[],
+            Writer::in_memory(),
+            &opts,
+            &mut |_| {},
+        )
+    };
+    assert!(with(3, None).err().unwrap().contains("dummy"));
+    assert!(
+        with(0, Some(nifti([4, 4, 3, 1], 352.0, 48)))
+            .err()
+            .unwrap()
+            .contains("grid")
+    );
+    assert!(
+        with(0, Some(nifti([4, 4, 4, 2], 352.0, 128)))
+            .err()
+            .unwrap()
+            .contains("grid")
+    );
+    // A library caller's mask shorter than the grid.
+    let tes = check_te_values(&[15.0, 30.0]).unwrap();
+    let short = Some(vec![true; 63]);
+    let e = meica_core::pipeline::combine(&[echo(), echo()], &tes, short);
+    assert!(e.err().unwrap().contains("grid"));
     // Hostile JSON: deep nesting, a bad surrogate pair.
     use meica_core::json::Json;
     assert!(Json::parse(&"[".repeat(100_000)).is_err());
     assert!(Json::parse(r#""\ud800A""#).is_err());
+}
+
+#[test]
+fn header_only_read_of_plain_and_gzip_files() {
+    use flate2::{Compression, write::GzEncoder};
+    use meica_core::io::header_of;
+    use std::io::Write;
+    let bytes = nifti([3, 4, 5, 6], 352.0, 360);
+    let mut gz = GzEncoder::new(Vec::new(), Compression::fast());
+    gz.write_all(&bytes).unwrap();
+    for data in [bytes.clone(), gz.finish().unwrap()] {
+        assert_eq!(header_of(data.as_slice()).unwrap().dim[1..5], [3, 4, 5, 6]);
+    }
 }
 
 #[test]

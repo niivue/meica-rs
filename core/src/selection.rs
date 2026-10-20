@@ -36,9 +36,21 @@ pub fn bundled_tree(name: &str) -> Option<&'static str> {
     TREES.iter().find(|(n, _)| *n == name).map(|(_, t)| *t)
 }
 
+/// Whether a tree has an external_regressor_config (and so takes --external).
+pub fn takes_regressors(tree: &Json) -> bool {
+    tree.get("external_regressor_config")
+        .is_some_and(|c| *c != Json::Null)
+}
+
 /// A bundled tree by name or a tree file's contents.
 pub fn load_tree(name_or_json: &str) -> Result<Json, String> {
     let text = bundled_tree(name_or_json).unwrap_or(name_or_json);
+    if !text.trim_start().starts_with('{') {
+        return Err(format!(
+            "decision tree {:?} is not a bundled name or a JSON object",
+            name_or_json.chars().take(80).collect::<String>()
+        ));
+    }
     let mut tree = Json::parse(text).map_err(|e| format!("decision tree: {e}"))?;
     if tree.get("nodes").and_then(Json::as_arr).is_none() {
         return Err("decision tree has no nodes".into());

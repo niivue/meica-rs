@@ -90,7 +90,7 @@ fn stage(dir: &Path) -> &'static Combined {
                 )
             })
             .collect();
-        combine(&echoes, &check_te_values(&TES).unwrap()).unwrap()
+        combine(&echoes, &check_te_values(&TES).unwrap(), None).unwrap()
     })
 }
 
