@@ -184,8 +184,7 @@ builds round differently); the byte-exact gates and the webapp e2e run without i
 
 ## Open items
 
-- npm publish of 0.1.20261018 (`--mask`, `dummy_scans`, `prepareMoco`, LGPL-2.1) is pending;
-  then bump the webapp (Release).
+- Bump the webapp to 0.1.20261021 (`denoiseMeica`; Release).
 - `validation/wasm_parity.mjs` duplicates the js loader; it could call `loadMeica`/`runMeica`.
 - The nightly toolchain is pinned in three places: `ci.yml`, `release.yml`, `js/scripts/build-wasm.mjs`.
 - WebAssembly ignores `no_reports` (always adds the report columns).

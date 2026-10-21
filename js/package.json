@@ -1,6 +1,6 @@
 {
   "name": "@niivue/meica",
-  "version": "0.1.20261018",
+  "version": "0.1.20261021",
   "description": "Multi-echo ICA denoising (a Rust port of tedana) as WebAssembly",
   "type": "module",
   "license": "LGPL-2.1-only",

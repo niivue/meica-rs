@@ -116,14 +116,14 @@ dependencies = [
 
 [[package]]
 name = "meica"
-version = "0.1.20261018"
+version = "0.1.20261021"
 dependencies = [
  "meica-core",
 ]
 
 [[package]]
 name = "meica-core"
-version = "0.1.20261018"
+version = "0.1.20261021"
 dependencies = [
  "flate2",
  "rayon",
@@ -131,7 +131,7 @@ dependencies = [
 
 [[package]]
 name = "meica-wasm"
-version = "0.1.20261018"
+version = "0.1.20261021"
 dependencies = [
  "meica-core",
  "wasm-bindgen",
