@@ -180,3 +180,21 @@ pub fn moco_dummy_scans(nss_json: &str) -> Result<usize, String> {
 pub fn tree_takes_regressors(tree: &str) -> Result<bool, String> {
     meica_core::selection::load_tree(tree).map(|t| meica_core::selection::takes_regressors(&t))
 }
+
+/// `meica --denoise`: a finished run's classification applied to another series of the run
+/// (NIfTI or NIfTI-gz bytes); float32 NIfTI out, gzipped when `gzip`.
+#[wasm_bindgen]
+pub fn denoise(
+    bold: Vec<u8>,
+    mixing: &str,
+    metrics: &str,
+    dummy_scans: usize,
+    gzip: bool,
+) -> Result<Vec<u8>, String> {
+    let out = meica_core::workflow::denoise(&parse_nifti(bold)?, mixing, metrics, dummy_scans)?;
+    Ok(if gzip {
+        meica_core::output::gzip(&out)
+    } else {
+        out
+    })
+}

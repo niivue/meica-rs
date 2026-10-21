@@ -9,7 +9,7 @@ use crate::json::Json;
 use crate::linalg::{Mat, residual};
 use crate::mapca::{Criterion, MaPca};
 use crate::math::exp;
-use crate::metrics::{Metrics, row_coeffs};
+use crate::metrics::{Metrics, coeffs, row_coeffs};
 use crate::output::{Column, Files, Voxels, Writer, component_name};
 use crate::pipeline::{
     Combined, check_te_values, combine, component_metrics, component_table, metric_columns, tedpca,
@@ -875,4 +875,96 @@ pub fn run(
         n_iter,
     };
     Ok((summary, files))
+}
+
+/// tedana's non-aggressive denoising applied to another series of the same run (e.g. one resampled
+/// to an anatomical space): per voxel, fit every column of `desc-ICA_mixing.tsv` to the demeaned
+/// series after `dummies` volumes and subtract the part of the columns `desc-tedana_metrics.tsv`
+/// classifies as rejected. The dummy volumes pass through. Float32, `bold`'s header otherwise.
+pub fn denoise(
+    bold: &Nifti,
+    mixing_tsv: &str,
+    metrics_tsv: &str,
+    dummies: usize,
+) -> Result<Vec<u8>, String> {
+    let mut lines = mixing_tsv.lines().filter(|l| !l.is_empty());
+    let names: Vec<&str> = lines
+        .next()
+        .ok_or("empty mixing TSV")?
+        .split('\t')
+        .collect();
+    let values = lines
+        .flat_map(|l| l.split('\t'))
+        .map(|v| {
+            v.parse::<f64>()
+                .map_err(|_| format!("mixing TSV: {v} is not a number"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mixing = Mat::from_row_major(values.len() / names.len(), names.len(), &values);
+    let mut rows = metrics_tsv.lines().filter(|l| !l.is_empty());
+    let head: Vec<&str> = rows
+        .next()
+        .ok_or("empty metrics TSV")?
+        .split('\t')
+        .collect();
+    let col = |c: &str| {
+        (head.iter().position(|h| *h == c)).ok_or(format!("metrics TSV has no {c} column"))
+    };
+    let (comp, class) = (col("Component")?, col("classification")?);
+    let mut rejected = Vec::new();
+    for r in rows {
+        let cells: Vec<&str> = r.split('\t').collect();
+        if cells.get(class) == Some(&"rejected") {
+            let name = cells[comp];
+            rejected.push(
+                names
+                    .iter()
+                    .position(|n| *n == name)
+                    .ok_or(format!("{name} is not in the mixing TSV"))?,
+            );
+        }
+    }
+    let [nx, ny, nz, nt] = bold.dims;
+    if values.len() != mixing.rows * names.len() || nt != dummies + mixing.rows {
+        return Err(format!(
+            "{nt} volumes minus {dummies} dummy scans do not match the {} mixing rows",
+            mixing.rows
+        ));
+    }
+    if !bold.header.little_endian {
+        return Err("big-endian NIfTI is not supported".into());
+    }
+    let n_vox = nx * ny * nz;
+    let betas = coeffs(
+        |v, y| {
+            y.clear();
+            y.extend((dummies..nt).map(|t| bold.value(v + n_vox * t)));
+            demean(y);
+        },
+        n_vox,
+        &mixing,
+        false,
+    );
+    let mut out = bold.header_bytes().to_vec();
+    out[70..72].copy_from_slice(&16i16.to_le_bytes()); // float32
+    out[72..74].copy_from_slice(&32i16.to_le_bytes());
+    out[108..112].copy_from_slice(&352f32.to_le_bytes()); // vox_offset: extensions dropped
+    out[112..116].copy_from_slice(&1f32.to_le_bytes()); // scl_slope
+    out[116..120].copy_from_slice(&0f32.to_le_bytes()); // scl_inter
+    out.extend([0u8; 4]);
+    // ponytail: whole image in memory (~4 bytes per value); stream volumes if browser memory binds.
+    out.reserve(n_vox * nt * 4);
+    for t in 0..nt {
+        for v in 0..n_vox {
+            let mut x = bold.value(v + n_vox * t);
+            if t >= dummies {
+                x -= rejected
+                    .iter()
+                    .map(|&k| betas[(v, k)] * mixing[(t - dummies, k)])
+                    .sum::<f64>();
+            }
+            out.extend((x as f32).to_le_bytes());
+        }
+    }
+    Ok(out)
 }

@@ -77,6 +77,15 @@ export function runMeica({ api, echoes, tes, options = {}, mask, onProgress = ()
 }
 
 /**
+ * `meica --denoise`: apply a finished run's classification (`mixing`: desc-ICA_mixing.tsv text,
+ * `metrics`: desc-tedana_metrics.tsv text) to another series of the same run, e.g. one resampled
+ * to an anatomical space. Its first `dummyScans` volumes pass through. Returns float32 NIfTI bytes.
+ */
+export function denoiseMeica({ api, bold, mixing, metrics, dummyScans = 0, gzip = false }) {
+  return api.denoise(bytes(bold), mixing, metrics, dummyScans, gzip);
+}
+
+/**
  * `meica --moco` in the browser: niimath motion-corrects the echoes (echo 1's BOLD reference,
  * dummy count and motion, applied to every echo in one interpolation) and writes fMRIPrep-named
  * confounds; brainchop-mindgrab masks the reference unless `mask` is given. `run(argv, { files })`

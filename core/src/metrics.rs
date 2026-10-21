@@ -42,7 +42,12 @@ pub struct Metrics {
 }
 
 /// tedana `get_coeffs`: least-squares betas of every voxel series on the columns of x.
-fn coeffs(series: impl Fn(usize, &mut Vec<f64>), n_vox: usize, x: &Mat, add_const: bool) -> Mat {
+pub(crate) fn coeffs(
+    series: impl Fn(usize, &mut Vec<f64>),
+    n_vox: usize,
+    x: &Mat,
+    add_const: bool,
+) -> Mat {
     let mut design = x.clone();
     if add_const {
         design = Mat::zeros(x.rows, x.cols + 1);

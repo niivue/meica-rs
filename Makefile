@@ -1,7 +1,7 @@
 TMPDIR ?= /tmp
 PYTHON ?= python3
 
-.PHONY: reference build test test-real check-outputs check-external check-mask wasm wasm-parity lint fixtures
+.PHONY: reference build test test-real check-outputs check-external check-mask check-denoise wasm wasm-parity lint fixtures
 
 # Example, tedana references and stage files for both examples from Hugging Face, pinned. Then use
 # MEICA_REFERENCE_DIR=$(MEICA_HF_DIR)/me-ica/motor-3echo (or motor-3echo-moco, which adds the
@@ -45,6 +45,12 @@ check-external: build
 		rm -rf $(TMPDIR)/meica-$(t); \
 		$(call run_example,$(TMPDIR)/meica-$(t)) $(call external_args,$(t)); \
 		$(PYTHON) validation/compare_outputs.py $(MEICA_REFERENCE_DIR)/external/$(t) $(TMPDIR)/meica-$(t);)
+
+# --denoise must reproduce a run's own denoised series (motion_aroma: most components rejected).
+check-denoise: build
+	rm -rf $(TMPDIR)/meica-denoise $(TMPDIR)/meica-denoise-check
+	$(call run_example,$(TMPDIR)/meica-denoise) $(call external_args,motion_aroma)
+	$(PYTHON) validation/check_denoise.py target/release/meica $(TMPDIR)/meica-denoise $(TMPDIR)/meica-denoise-check
 
 # Both WebAssembly builds into js/dist (threaded: nightly-2025-11-15 build-std; single: stable).
 wasm:

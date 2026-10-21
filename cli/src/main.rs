@@ -4,9 +4,9 @@
 use meica_core::io::{Nifti, header_of, parse_nifti, read_nifti};
 use meica_core::mapca::Criterion;
 use meica_core::moco;
-use meica_core::output::Writer;
+use meica_core::output::{Writer, gzip};
 use meica_core::selection::{bundled_tree, load_tree, takes_regressors};
-use meica_core::workflow::{Options, VERSION, output_name, run};
+use meica_core::workflow::{Options, VERSION, denoise, output_name, run};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
@@ -14,6 +14,7 @@ const USAGE: &str = "usage: meica -d FILE [FILE ...] -e TE [TE ...] [--out-dir D
               [--tree tedana_orig|meica|minimal|demo_external_*|motion_aroma|motion_f|FILE]
               [--external TSV] [--mask FILE] [--dummy-scans N] [--moco] [--tedpca aic|kic|mdl]
               [--seed N] [--maxit N] [--maxrestart N] [--n-threads N] [--no-reports] [--quiet]
+       meica --denoise BOLD --mixing TSV --metrics TSV -o OUT [--dummy-scans N]
 
 Multi-echo ICA denoising: tedana's default workflow (e07066c) in Rust.
 TEs are seconds (< 1) or milliseconds. Outputs use tedana's BIDS names.
@@ -26,10 +27,24 @@ made). Accepted and ignored: --png-cmap, --overwrite/-f, --debug.
 then on PATH): echo 1's BOLD reference, dummy count and motion, applied to every echo in one
 interpolation. brainchop-mindgrab masks the reference unless --mask is given, and niimath writes
 fMRIPrep-named confounds (desc-mocoConfounds_timeseries.tsv), used as --external by trees that
-take regressors. A non-zero --dummy-scans overrides niimath's count.";
+take regressors. A non-zero --dummy-scans overrides niimath's count.
+--denoise (not a tedana flag) applies a finished run's classification to another 4D series of
+the same run, such as one resampled to an anatomical space: tedana's non-aggressive denoising
+with desc-ICA_mixing.tsv and desc-tedana_metrics.tsv. BOLD keeps its first N volumes (the run's
+--dummy-scans) unchanged; the rest must match the mixing rows. OUT is float32, gzipped if it
+ends in .gz.";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--denoise") {
+        return match denoise_cli(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("meica: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     match parse(&args).and_then(|(inputs, out_dir, mut opts, quiet, moco)| {
         let start = std::time::Instant::now();
         let mut log = |m: &str| {
@@ -308,6 +323,42 @@ fn parse(args: &[String]) -> Result<(Vec<PathBuf>, PathBuf, Options, bool, bool)
         return Err(format!("-d and -e are required\n\n{USAGE}"));
     }
     Ok((inputs, out_dir, opts, quiet, moco))
+}
+
+/// `meica --denoise BOLD --mixing TSV --metrics TSV -o OUT [--dummy-scans N]`.
+fn denoise_cli(args: &[String]) -> Result<(), String> {
+    let get = |flag: &str| {
+        let i = args.iter().position(|a| a == flag)?;
+        args.get(i + 1)
+    };
+    let known = ["--denoise", "--mixing", "--metrics", "-o", "--dummy-scans"];
+    if let Some(a) = args
+        .iter()
+        .step_by(2)
+        .find(|a| !known.contains(&a.as_str()))
+    {
+        return Err(format!("{a} is not a --denoise option\n\n{USAGE}"));
+    }
+    let need = |flag: &str| get(flag).ok_or(format!("--denoise needs {flag}\n\n{USAGE}"));
+    let text = |f: &String| std::fs::read_to_string(f).map_err(|e| format!("{f}: {e}"));
+    let dummies = get("--dummy-scans").map_or(Ok(0), |s| {
+        s.parse()
+            .map_err(|_| format!("--dummy-scans must be a non-negative integer, not {s}"))
+    })?;
+    let out = need("-o")?;
+    let bold = read_nifti(Path::new(need("--denoise")?))?;
+    let bytes = denoise(
+        &bold,
+        &text(need("--mixing")?)?,
+        &text(need("--metrics")?)?,
+        dummies,
+    )?;
+    let bytes = if out.ends_with(".gz") {
+        gzip(&bytes)
+    } else {
+        bytes
+    };
+    std::fs::write(out, bytes).map_err(|e| format!("{out}: {e}"))
 }
 
 /// `os.path.relpath(target, start=base)` on canonical paths, as tedana's registry lists inputs.

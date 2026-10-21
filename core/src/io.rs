@@ -33,6 +33,11 @@ impl Nifti {
         v
     }
 
+    /// The 348 header bytes as read (the file's byte order).
+    pub fn header_bytes(&self) -> &[u8] {
+        &self.raw[..348]
+    }
+
     /// tedana --dummy-scans: drop the first `n` volumes.
     pub fn drop_volumes(&mut self, n: usize) -> Result<(), String> {
         if n >= self.dims[3] {

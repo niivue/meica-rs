@@ -82,6 +82,16 @@ non-zero `--dummy-scans` overrides niimath's dummy count. Both
 tools are separate programs, found next to `meica` first, then on PATH. Results with `--moco`
 depend on those tools' builds, so they are not byte-identical across platforms.
 
+`--denoise` (not a tedana flag) applies a finished run's classification to another 4D series of
+the same run, typically one resampled to an anatomical space by a preprocessing pipeline:
+tedana's non-aggressive denoising with that run's mixing matrix, keeping the series' grid and the
+first `--dummy-scans` volumes:
+
+```bash
+meica --denoise space-T1w_desc-preproc_bold.nii.gz --mixing out/desc-ICA_mixing.tsv \
+  --metrics out/desc-tedana_metrics.tsv --dummy-scans 1 -o space-T1w_desc-denoised_bold.nii.gz
+```
+
 In JavaScript (browser or Node 22+):
 
 ```js

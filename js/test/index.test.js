@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { loadMeica, prepareMoco, runMeica } from "../src/index.js";
+import { denoiseMeica, loadMeica, prepareMoco, runMeica } from "../src/index.js";
 
 /** A stand-in for the WebAssembly Session that records what the wrapper passes. */
 function fakeApi(log) {
@@ -113,4 +113,28 @@ test("prepareMoco runs niimath and mindgrab through the caller's driver and feed
   assert.ok(!lines.some((a) => a[0] === "brainchop-mindgrab"));
   assert.equal(lines[1][lines[1].indexOf("-dummy") + 1], "4");
   assert.equal(own.options.external, undefined);
+});
+
+test("denoiseMeica removes rejected components and passes dummies through", { skip: !existsSync(new URL("../dist/single/meica_wasm.js", import.meta.url)) && "run npm run build first" }, async () => {
+  // 2 voxels x 5 volumes (float32), 1 dummy; one mixing column, rejected.
+  const series = [[9, 1, 2, 3, 4], [9, 4, 6, 6, 4]];
+  const nifti = new DataView(new ArrayBuffer(352 + 40));
+  nifti.setInt32(0, 348, true);
+  [4, 2, 1, 1, 5, 1, 1, 1].forEach((d, i) => nifti.setInt16(40 + 2 * i, d, true));
+  nifti.setInt16(70, 16, true);
+  nifti.setInt16(72, 32, true);
+  nifti.setFloat32(108, 352, true);
+  series.forEach((ts, v) => ts.forEach((x, t) => nifti.setFloat32(352 + 4 * (t * 2 + v), x, true)));
+  const api = await loadMeica({ threads: 1 });
+  const metrics = "Component\tclassification\nICA_00\t";
+  const run = (label) => new DataView(denoiseMeica({ api, bold: new Uint8Array(nifti.buffer), mixing: "ICA_00\n-1.5\n-0.5\n0.5\n1.5\n", metrics: metrics + label, dummyScans: 1 }).buffer);
+  const value = (out, v, t) => out.getFloat32(352 + 4 * (t * 2 + v), true);
+  const rejected = run("rejected");
+  assert.equal(value(rejected, 0, 0), 9);
+  // voxel 0 is a pure ramp: only its mean (2.5) remains; voxel 1 has no ramp: unchanged.
+  for (let t = 1; t < 5; t++) assert.ok(Math.abs(value(rejected, 0, t) - 2.5) < 1e-6);
+  for (let t = 1; t < 5; t++) assert.equal(value(rejected, 1, t), series[1][t]);
+  const accepted = run("accepted");
+  for (let t = 0; t < 5; t++) assert.equal(value(accepted, 0, t), series[0][t]);
+  assert.throws(() => denoiseMeica({ api, bold: new Uint8Array(nifti.buffer), mixing: "ICA_00\n1\n", metrics: metrics + "rejected" }));
 });
