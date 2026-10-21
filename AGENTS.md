@@ -5,7 +5,7 @@ Rust port of tedana's ME-ICA (core, cli `meica`, wasm) plus the npm package `@ni
 
 - Equivalence gates only tighten. Run them as single make invocations (they share builds):
   `make reference MEICA_HF_DIR=DIR`, then
-  `make test-real check-outputs check-external wasm-parity lint PYTHON=python MEICA_REFERENCE_DIR=DIR/me-ica/motor-3echo-moco`
+  `make test-real check-outputs check-external wasm-parity check-denoise lint PYTHON=python MEICA_REFERENCE_DIR=DIR/me-ica/motor-3echo-moco`
   (and `test-real check-outputs` with `motor-3echo`).
 - Reference data lives on Hugging Face (`neurodeskorg/webapps`, `me-ica/…`, pinned by
   `MEICA_HF_REV` in the Makefile). Re-pin after uploading regenerated references.

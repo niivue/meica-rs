@@ -13,6 +13,7 @@ make check-external PYTHON=python  # the five regressor trees against tedana's (
 make wasm        # js/dist/threaded (nightly-2025-11-15 build-std; not published) and js/dist/single (stable)
 make wasm-parity # single-threaded WebAssembly in Node: every output byte-identical to native
 make check-mask PYTHON=python  # --mask / --dummy-scans against tedana's runs in mask/ (+ wasm)
+make check-denoise PYTHON=python  # --denoise reproduces a run's own denoised series
 make lint        # clippy -D warnings (native and wasm32), fmt --check
 make fixtures PYTHON=python   # regenerate core/tests/fixtures (needs numpy, scipy, mpmath)
 ```
