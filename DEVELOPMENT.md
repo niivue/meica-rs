@@ -169,7 +169,8 @@ of panic paths.
 ## Release
 
 `cd js && npm run pub` publishes `@niivue/meica` (needs `npm login`). Then, in the Neurodesk
-webapps checkout, bump `apps/me-ica/package.json` and run `pnpm install` to update
+webapps checkout, bump `apps/me-ica/package.json` (and fastprep's pins in
+`packages/fastprep` and `apps/fastprep`) and run `pnpm install` to update
 `pnpm-lock.yaml`; a change to outputs also needs `e2e/expected.json` re-recorded (AGENTS.md).
 
 ## `--moco`
@@ -184,7 +185,7 @@ builds round differently); the byte-exact gates and the webapp e2e run without i
 
 ## Open items
 
-- Bump the webapp to 0.1.20261021 (`denoiseMeica`; Release).
+- Bump `apps/me-ica` to 0.1.20261021 (`denoiseMeica`; Release); fastprep already pins it.
 - `validation/wasm_parity.mjs` duplicates the js loader; it could call `loadMeica`/`runMeica`.
 - The nightly toolchain is pinned in three places: `ci.yml`, `release.yml`, `js/scripts/build-wasm.mjs`.
 - WebAssembly ignores `no_reports` (always adds the report columns).

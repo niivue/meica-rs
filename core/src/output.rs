@@ -213,7 +213,6 @@ impl Writer {
     }
 }
 
-/// tedana `add_decomp_prefix`: zero-padded to the digits of `max_value`.
 /// Gzip at nibabel's default level.
 pub fn gzip(bytes: &[u8]) -> Vec<u8> {
     let mut gz = GzEncoder::new(Vec::new(), Compression::new(1));
@@ -222,6 +221,7 @@ pub fn gzip(bytes: &[u8]) -> Vec<u8> {
         .expect("gzip to memory")
 }
 
+/// tedana `add_decomp_prefix`: zero-padded to the digits of `max_value`.
 pub fn component_name(prefix: &str, index: usize, max_value: usize) -> String {
     let digits = max_value.max(1).ilog10() as usize + 1;
     format!("{prefix}_{index:0digits$}")

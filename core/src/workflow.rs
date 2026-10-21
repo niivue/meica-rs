@@ -887,45 +887,58 @@ pub fn denoise(
     metrics_tsv: &str,
     dummies: usize,
 ) -> Result<Vec<u8>, String> {
-    let mut lines = mixing_tsv.lines().filter(|l| !l.is_empty());
-    let names: Vec<&str> = lines
-        .next()
-        .ok_or("empty mixing TSV")?
-        .split('\t')
-        .collect();
-    let values = lines
-        .flat_map(|l| l.split('\t'))
-        .map(|v| {
-            v.parse::<f64>()
-                .map_err(|_| format!("mixing TSV: {v} is not a number"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let mixing = Mat::from_row_major(values.len() / names.len(), names.len(), &values);
-    let mut rows = metrics_tsv.lines().filter(|l| !l.is_empty());
-    let head: Vec<&str> = rows
-        .next()
-        .ok_or("empty metrics TSV")?
-        .split('\t')
-        .collect();
-    let col = |c: &str| {
-        (head.iter().position(|h| *h == c)).ok_or(format!("metrics TSV has no {c} column"))
+    // CRLF-tolerant: a metrics row ending "rejected\r" must still count
+    let rows_of = |text: &str| -> Vec<Vec<String>> {
+        text.lines()
+            .map(|l| l.trim_end_matches('\r'))
+            .filter(|l| !l.is_empty())
+            .map(|l| l.split('\t').map(String::from).collect())
+            .collect()
     };
-    let (comp, class) = (col("Component")?, col("classification")?);
-    let mut rejected = Vec::new();
-    for r in rows {
-        let cells: Vec<&str> = r.split('\t').collect();
-        if cells.get(class) == Some(&"rejected") {
-            let name = cells[comp];
-            rejected.push(
-                names
-                    .iter()
-                    .position(|n| *n == name)
-                    .ok_or(format!("{name} is not in the mixing TSV"))?,
+    let mix = rows_of(mixing_tsv);
+    let names = mix.first().ok_or("empty mixing TSV")?;
+    let mut values = Vec::new();
+    for (r, row) in mix.iter().enumerate().skip(1) {
+        if row.len() != names.len() {
+            return Err(format!(
+                "mixing TSV row {r} has {} cells, the header {}",
+                row.len(),
+                names.len()
+            ));
+        }
+        for v in row {
+            values.push(
+                v.parse::<f64>()
+                    .map_err(|_| format!("mixing TSV: {v} is not a number"))?,
             );
         }
     }
+    let mixing = Mat::from_row_major(mix.len() - 1, names.len(), &values);
+    let metrics = rows_of(metrics_tsv);
+    let head = metrics.first().ok_or("empty metrics TSV")?;
+    let col = |c: &str| {
+        head.iter()
+            .position(|h| h == c)
+            .ok_or(format!("metrics TSV has no {c} column"))
+    };
+    let (comp, class) = (col("Component")?, col("classification")?);
+    let mut rejected = Vec::new();
+    for cells in &metrics[1..] {
+        if cells.get(class).map(String::as_str) == Some("rejected") {
+            let name = cells
+                .get(comp)
+                .ok_or("metrics TSV row without a Component")?;
+            let k = names
+                .iter()
+                .position(|n| n == name)
+                .ok_or(format!("{name} is not in the mixing TSV"))?;
+            if !rejected.contains(&k) {
+                rejected.push(k);
+            }
+        }
+    }
     let [nx, ny, nz, nt] = bold.dims;
-    if values.len() != mixing.rows * names.len() || nt != dummies + mixing.rows {
+    if nt != dummies + mixing.rows {
         return Err(format!(
             "{nt} volumes minus {dummies} dummy scans do not match the {} mixing rows",
             mixing.rows
